@@ -1,0 +1,411 @@
+---
+title: "Case Study on US healthcare Data"
+author: "SAI SHASHANK NUKALA"
+date: "4/17/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+library(backports)
+library(corrplot)
+library(devtools)
+library(dplyr)
+library(ggplot2)
+library(ggthemes)
+library(gridExtra)
+library(gridGraphics)
+library(gridtext)
+library(janitor)
+library(lubridate)
+library(magrittr)
+library(maptools)
+library(reshape2)
+library(scales)
+library(tidyverse)
+library(treemapify)
+library(usmap)
+library(zeallot)
+library(dplyr)
+library(fitdistrplus)
+
+
+
+
+```
+
+#graph 1
+
+```{r}
+#importing data
+US_Health_Insurance <- read.csv("C:/Users/saish/Downloads/US_Health_Insurance.csv")
+
+#Task1
+p1<-US_Health_Insurance %>% ggplot(mapping = aes(x=sex, y=charges, fill=region)) + geom_bar(stat = "identity", position="dodge") + ylab("charges in dollars")
+
+p2<- US_Health_Insurance %>% ggplot(mapping = aes(x=sex, y=charges, fill=smoker)) + geom_bar(stat = "identity", position="dodge")+ ylab("charges in dollars")
+
+grid.arrange(p1,p2, ncol=2)
+```
+
+
+```{r graph2}
+US_Health_Insurance$age_range <- cut_width(US_Health_Insurance$age,width=10,boundary=0)
+
+US_Health_Insurance$Agegroup<-findInterval(US_Health_Insurance$age,c(0,25,35,45,55))
+
+US_Health_Insurance$Agegroup<-as.factor(US_Health_Insurance$Agegroup)
+
+levels(US_Health_Insurance$Agegroup)<-c("Below 25","25-34","35-44","45-54","55-64")
+
+#grouping BMI
+
+US_Health_Insurance$BMI_group<-findInterval(US_Health_Insurance$bmi,c(0,18.5,25,30))
+
+US_Health_Insurance$BMI_group<-as.factor(US_Health_Insurance$BMI_group)
+
+levels(US_Health_Insurance$BMI_group)<-c("Underweight","Normal","Overweight","Obesity")
+
+
+p3<- US_Health_Insurance %>% ggplot(mapping= aes(x=Agegroup, y=charges, fill=sex)) +
+  geom_bar(stat="identity", position="dodge")+ylab("charges in dollars")
+
+
+p4<- US_Health_Insurance %>% ggplot(mapping= aes(x=children, y=charges, fill=sex)) +
+  geom_bar(stat="identity")+ coord_flip()
+
+grid.arrange(p3,p4, ncol=2)
+```
+```{r graph 3}
+US_Health_Insurance %>% ggplot(mapping= aes(x=BMI_group, y=charges, fill=smoker)) +
+  geom_bar(stat="identity", position="dodge")+ ylab("charges in dollars")
+```
+```{r Task 2}
+
+US_Health_Insurance$age_range <- cut_width(US_Health_Insurance$age,width=10,boundary=-1)
+
+
+age_df<- US_Health_Insurance %>% group_by(age_range) %>%
+  summarise(count = n())
+
+
+age_df$age_pmf <- round(age_df$count/sum(age_df$count),3)
+age_df$age_cdf <- round(cumsum(age_df$age_pmf),3)
+
+
+children_df2<- US_Health_Insurance %>% group_by(children) %>%
+  summarise(count = n())
+
+children_df2$children_pmf <- round(children_df2$count/sum(children_df2$count),3)
+children_df2$children_cdf <- round(cumsum(children_df2$children_pmf),3)
+
+joint_freq <- outer(age_df$count, children_df2$count, FUN = "+")
+joint_prob<- round(joint_freq/sum(joint_freq),3)
+colnames(joint_freq) <- c('0','1','2','3','4','5')
+rownames(joint_freq)<- c("[9,19]","[19,29]","[29,39]","[39,49]","[49,59]","[59,69]")
+
+colnames(joint_prob)<- c('0','1','2','3','4','5')
+
+rownames(joint_prob)<- c("[9,19]","[19,29]","[29,39]","[39,49]","[49,59]","[59,69]")
+
+
+
+```
+
+
+```{r Task 3}
+joint_df<- melt(joint_freq)
+
+colnames(joint_df)<- c("age_ranges", "no_of_children", "frequency")
+
+
+ggplot(data =joint_df,aes(x=age_ranges, y=no_of_children)) +
+  geom_point(aes(size = frequency, color = frequency)) +
+  labs(x = 'age_ranges', y = 'no of children')
+
+#corelation co efficient
+cor(age_df$count, children_df2$count)
+#ans :-0.1840299
+
+```
+```{r }
+
+#task 4
+
+#filtering 
+
+with_children <- US_Health_Insurance %>%
+  dplyr::filter(region=="northwest" & children != 0 )
+
+without_children<- US_Health_Insurance %>%
+  dplyr::filter(region=="northwest" & children == 0 )
+
+
+
+#sampling
+
+sample_children_1<- sample_n(with_children,100)
+
+sample_children_2<- sample_n(without_children,100)
+
+#performing two sample Z test (TOH)
+
+z_test = function(a, b, var_a, var_b){
+  n_a = length(a)
+  n_b = length(b)
+  z = (mean(a) - mean(b)) / (sqrt((var_a)/n_a + (var_b)/n_b))
+  return(z)
+}
+
+#X1 ≡ R.V. of charges from first sample
+#X2 ≡ R.V. of charges from second sample
+#mean 1
+mean(sample_children_1$charges)
+
+#mean 2
+mean(sample_children_2$charges)
+
+#Null Hypothesis: mean 1 - mean 2 = 0
+#alternate Hypothesis mean 1 - mean 2 !=0
+
+#ztest 
+z_test(sample_children_1$charges,sample_children_2$charges, var(sample_children_1$charges), var(sample_children_2$charges)) 
+
+
+#ans 1.139751
+#Thus, for a significane level of α = 0.05, we fail to reject the null hypothesis since the z-value lies within the
+#range [−1.96, 1.96] and conclude that there is no significant difference between the mean charges of two samples.
+
+
+#boxplot
+ggplot(data = US_Health_Insurance) +
+  geom_boxplot(mapping = aes(x = children, y = charges, color = region))+ ylab("charges in dollars")
+
+
+
+```
+```{r }
+
+#task 5
+
+#filtering the data set
+
+
+Region1 <- US_Health_Insurance %>%
+  dplyr::filter(region == "northwest")
+
+
+Region2 <- US_Health_Insurance %>%
+  dplyr::filter(region == "northeast")
+
+
+#sampling
+
+Sample_region_1<- sample_n(Region1,200)
+
+Sample_region_2<- sample_n(Region2,200)
+
+
+#X1 = R.v of no of smokers in northwest region
+
+x1= nrow(Sample_region_1%>%
+           dplyr::filter(smoker == "yes"))
+
+n1=nrow(Sample_region_1)
+
+p1=x1/n1
+
+
+#X2 = R.v of no of smokers in northeast region
+
+x2= nrow(Sample_region_2%>%
+           dplyr::filter(smoker == "yes"))
+
+n2=nrow(Sample_region_2)
+
+p2=x2/n2
+
+# Null Hypothesis: p1=p2
+# Alternate Hypothesis: p1!=p2
+# alpha = 0.05
+
+# Calculate the Statistic
+p = (x1+x2)/(n1+n2)
+
+z_calc = (p1-p2)/sqrt(p*(1-p)*(1/n1 + 1/n2))
+
+#z_calc=-0.3666794
+
+#make a decision
+Pvalue= pnorm(z_calc,lower.tail = TRUE)
+
+
+#Pvalue= 0.3569291
+#Since P_value > alpha, we fail to reject Null Hypothesis
+#Therefore the ratio of smokers in northwest is not equal to the ratio of smokers in notheast
+
+
+```
+
+```{r }
+
+#task 6
+
+#filtering data
+
+above_50 <- US_Health_Insurance %>%
+  dplyr::filter(age > 50)
+
+
+younger_than_50<- US_Health_Insurance %>%
+  dplyr::filter(age <= 50)
+
+#sampling data
+
+sample_age_1<- sample_n(above_50,300) 
+
+sample_age_2<- sample_n(younger_than_50,300)
+
+##Null Hypothesis: ratio of variances for people above 50 and younger than 50 is <= 1
+#alternate Hypothesis  ratio of variances for people above 50 and younger than 50 is > 1
+
+#testing the hypothesis
+
+Ftest<- var.test(sample_age_1$charges, sample_age_2$charges, alternative= "greater")
+
+print(Ftest)
+
+#The p-value of F-test is p = 0.8991 
+#which is greater than the significance level 0.05, we fail to reject the null Hypothesis
+#In conclusion, there is no significant difference between the two variances.
+
+
+
+
+```
+
+
+```{r }
+
+#Task7
+#distribution fitting
+
+
+#visualizing the BMI which is continuos data
+ggplot(US_Health_Insurance, aes(bmi)) + geom_histogram(bins=20, colour='black', fill='steelblue')
+
+# descriptive statistics
+descdist(US_Health_Insurance$bmi)
+
+#getting the parameter estimates accoring to the cullen and frey graph
+#Normal
+fit_nml<- fitdist(US_Health_Insurance$bmi, "norm")
+summary(fit_nml)
+#lognormal
+fit_ln<- fitdist(US_Health_Insurance$bmi, "lnorm")
+summary(fit_ln)
+#gamma
+fit_gm<- fitdist(US_Health_Insurance$bmi, "gamma")
+summary(fit_gm)
+
+
+#goodness of fit plots for gamma as the parameter estimates are indicative of a gamma distribution
+par(mfrow=c(2,2))
+plot.legend <- c("gamma", "normal")
+denscomp(list(fit_gm,fit_nml), legendtext = plot.legend, xlab = 'Relative Humidity (x)', xlegend = 'topleft')
+cdfcomp (list(fit_gm,fit_nml), legendtext = plot.legend, xlab = 'Relative Humidity (x)')
+qqcomp  (list(fit_gm,fit_nml), legendtext = plot.legend, xlab = 'Relative Humidity (x)')
+ppcomp  (list(fit_gm,fit_nml), legendtext = plot.legend, xlab = 'Relative Humidity (x)')
+
+
+# visualize the Number of children which happens to be discrete data(y)
+ggplot(US_Health_Insurance, aes(children)) +
+  geom_histogram(bins = 20, color = 'Black', fill = 'steelblue')
+
+
+
+# getting the paramter estimates for negative binomial distribution
+fit_nb <- fitdist(US_Health_Insurance$children, 'nbinom')
+summary(fit_nb)
+
+# getting the paramter estimates for poisson distribution
+fit_p <- fitdist(US_Health_Insurance$children, 'pois')
+summary(fit_p)
+
+# goodness-of-fit tests
+gofstat(list(fit_nb, fit_p))
+
+
+
+
+```
+
+```{r }
+
+
+#Task 8
+
+#Hypothesis testing compare the ratio of the people who smoke for 
+#different BMI group
+
+#sample 1
+#Overweight individuals who smoke
+overweight_Smokers <- US_Health_Insurance %>%
+  dplyr::select(smoker, BMI_group) %>%
+  filter(smoker == "yes" & BMI_group == "Overweight")
+
+n_1 = 386
+x_1 = nrow(overweight_Smokers)
+p1_hat = x_1/n_1
+
+#sample 2
+#Obese individuals who smoke
+obese_Smokers <- US_Health_Insurance %>%
+  dplyr::select(smoker, BMI_group) %>%
+  filter(smoker == "yes" & BMI_group == "Obesity")
+
+n_2 = 707
+x_2 = nrow(obese_Smokers)
+p2_hat = x_2/n_2
+
+p_hat = (x_1+x_2)/(n_1+n_2)
+
+#Step 1 : Define the Hypothesis
+
+#p1 == proportion of Overweight individuals who smoke 
+#p2 == proportion of Obese individuals who smoke 
+
+#Null hypothesis H0 : p1 = p2
+#Alternative hypothesis H1 : p1 != p2
+
+#Step 2 : Calculate the Test Statistic 
+
+p_1 = p_2 = 0
+Z_cal1 = ((p1_hat-p2_hat)-(p_1-p_2))/(sqrt(p_hat * (1-p_hat) * (1/n_1 + 1/n_2)))
+
+#Z_calc = -0.5282746
+
+
+#Step 3 : Rejection Region
+
+aplha <- 0.05
+qnorm(aplha/2)
+ 
+
+#Step 4 : P value 
+
+#p-value = 2 * p(z > Zcal)
+
+p_value1 = 2 * pnorm(Zcal, lower.tail = FALSE)
+
+
+#p-value=1.402691 which is greater than alpha so we fail to reject the  null hypothesis
+
+ggplot(US_Health_Insurance, aes(x=BMI_group, fill = smoker)) + 
+  geom_bar(stat="count") +
+  scale_fill_brewer(palette="Blues")
+
+
+
+
+
+```
